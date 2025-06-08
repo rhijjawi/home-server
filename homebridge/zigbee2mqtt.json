@@ -1,0 +1,21 @@
+{
+    "mqtt": {
+        "base_topic": "zigbee2mqtt",
+        "server": "mqtt://${HOST}:${PORT}",
+        "reject_unauthorized": false,
+        "keepalive": 60,
+        "version": 4,
+        "disable_qos": false
+    },
+    "defaults": {
+        "exclude": false
+    },
+    "exclude_grouped_devices": false,
+    "devices": [
+        {
+            "id": "0x00124b0030d31e66",
+            "exclude": true
+        }
+    ],
+    "platform": "zigbee2mqtt"
+}

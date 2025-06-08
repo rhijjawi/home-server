@@ -1,0 +1,10 @@
+{
+    "accessory": "HTTP-SWITCH",
+    "name": "LED Bar",
+    "switchType": "stateful",
+    "onUrl": "http://ESP32IP/state?state=true",
+    "offUrl": "http://ESP32IP/state?state=false",
+    "statusUrl": "http://ESP32IP/status",
+    "statusPattern": "true",
+    "serialNumber": "ESP32-01"
+}
