@@ -7,6 +7,6 @@ Unfortunately, Homebridge does not support access from outside the local network
 To install Homebridge, follow the steps on the [Homebridge GitHub page](https://github.com/homebridge/docker-homebridge).
 
 ### Plugins
-- [HTTP-Switch](https://github.com/bauer-andreas/homebridge-http-switch)
-- [Zigbee2MQTT](https://z2m.dev/)
-### Configuration
+- [HTTP-Switch](https://github.com/bauer-andreas/homebridge-http-switch) (Configuration in [`http_switch.json`](http_switch.json))
+- [Zigbee2MQTT](https://z2m.dev/) (Configuration in [`zigbee2mqtt.json`](zigbee2mqtt.json))
+

@@ -10,7 +10,7 @@ This is my home server setup, which includes various services and applications t
 - 1x **ESP32**: Used for controlling the relay connected to the COB LED strip under my desk.
 
 #### Lighting
-- I have two IKEA bulbs that both support Zigbee communication. For this to work, you'll need a Zigbee Configurator. I use the [SONOFF USB Dongle](https://amzn.to/3Zl3CRR)<sup>[1](#notes)</sup>
+- I have two IKEA bulbs that both support Zigbee communication. For this to work, you'll need a Zigbee Configurator. I use the [SONOFF USB Dongle](https://amzn.to/3Zl3CRR) <sup>[1](#notes)</sup>
 - I use COB LED Strips. COB, or Chip-on-Board, LED strips are known for their high brightness and uniform light distribution. They're very well diffused and quite budget-friendly on AliExpress.
 
 ## Services
@@ -27,4 +27,4 @@ This is my home server setup, which includes various services and applications t
 - [**iperf**](https://iperf.fr/): A tool for measuring network performance between devices.
 
 ### Notes
-[1] : If you plan on using a Raspberry Pi, you should also consider getting a USB Extension Cable, since the Coordinators are quite sensitive to interference and may not work properly if they are too close to the Raspberry Pi's Wi-Fi or Bluetooth antennas. You can get one [here](https://amzn.to/43Sy7Qz)
+[1] : If you plan on using a Raspberry Pi, you should also consider getting a USB Extension Cable, since the Coordinators are quite sensitive to interference and may not work properly if they are too close to the Raspberry Pi's Wi-Fi or Bluetooth antennas. You can get one [here](https://amzn.to/43Sy7Qz).

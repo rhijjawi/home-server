@@ -13,7 +13,7 @@
     "exclude_grouped_devices": false,
     "devices": [
         {
-            "id": "0x00124b0030d31e66",
+            "id": "0xCOORDINATOR_IEEE",
             "exclude": true
         }
     ],
