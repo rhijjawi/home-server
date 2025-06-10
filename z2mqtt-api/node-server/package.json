@@ -1,0 +1,13 @@
+{
+  "name": "lighting-api",
+  "module": "index.ts",
+  "type": "module",
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@types/express": "^5.0.0",
+    "express": "^4.21.1",
+    "mqtt": "^5.10.3"
+  }
+}

@@ -1,17 +1,19 @@
-import mqtt from "mqtt"
-import events from "events"
+import mqtt from "mqtt";
+import express, { type Request, type Response } from "express";
+import { WebSocketServer } from 'ws'
 
-events.setMaxListeners(100)
-
-var MQTT_ADDR = "mqtt://MQTT_ADDR"
-var MQTT_PORT = 1883;
-var BUN_PORT = 3000;
-let hasCheckedUpdates = false
-
+const MQTT_ADDR = "mqtt://${MQTT_HOST_CHANGE}";
+const MQTT_PORT = 1883;
+const webserverPort = 3000;
 let globalDeviceList: any[] = [];
 
-var client = mqtt.connect(MQTT_ADDR, {
-    port: MQTT_BROKER_URL,
+if (MQTT_ADDR == "mqtt://${MQTT_HOST_CHANGE}") {
+    console.error("Please set the MQTT_HOST_CHANGE environment variable to your MQTT broker address.");
+    
+}
+
+const client = mqtt.connect(MQTT_ADDR, {
+    port: MQTT_PORT,
     clientId: `mqtt_` + Math.random().toString(16).substr(2, 8),
     protocolId: 'MQTT',
     protocolVersion: 4,
@@ -19,13 +21,56 @@ var client = mqtt.connect(MQTT_ADDR, {
     keepalive : 120,
 });
 
+async function notifyWebSocketClients(data: {
+    type: string;
+    device?: string;
+    deviceId?: string;
+    state?: boolean;
+}) {
+    const message = JSON.stringify(data);
+    wsServer.clients.forEach((client) => {
+        if (client.readyState === client.OPEN) {
+            client.send(message);
+        }
+    });
+}
+
+async function turnOffDevice(deviceId: string) {
+    const topic = `zigbee2mqtt/${deviceId}`;
+    await publishNoResponse(
+        `${topic}/set`,
+        JSON.stringify({ state: "OFF"}),
+        5000
+    )
+    
+}
+async function turnOnDevice(deviceId: string, brightness: number|null) {
+    const topic = `zigbee2mqtt/${deviceId}`;
+    await publishNoResponse(
+        `${topic}/set`,
+        JSON.stringify({ state: "ON", brightness: brightness ? brightness : undefined }),
+        5000
+    )
+    
+}
+async function getLightState(deviceId: string): Promise<any> {
+    const topic = `zigbee2mqtt/${deviceId}`;
+    const {message} = await publishAndWaitForResponse(
+        topic,
+        `${topic}/get`,
+        JSON.stringify({ state: "", brightness: "" }),
+        5000
+    );
+    return message;
+}
+
 function startDeviceListListener() {
     const topic = "zigbee2mqtt/bridge/devices";
 
     client.subscribe(topic, (err) => {
         if (err) {
-        console.error("Failed to subscribe to device list:", err);
-        return;
+            console.error("Failed to subscribe to device list:", err);
+            return;
         }
 
         console.log(`Subscribed to ${topic} for continuous updates.`);
@@ -36,178 +81,171 @@ function startDeviceListListener() {
         try {
             const parsed = JSON.parse(message.toString());
             if (Array.isArray(parsed)) {
-            globalDeviceList = parsed;
-            console.log("Device list updated:", parsed.length, "devices.");
+                globalDeviceList = parsed;
+                console.log("Device list updated:", parsed.length, "devices.");
             } else {
-            console.warn("Received unexpected device list format:", parsed);
+                console.warn("Received unexpected device list format:", parsed);
             }
         } catch (err) {
             console.error("Failed to parse device list message:", err);
         }
         }
     });
-
-    // Initial trigger to request devices
     client.publish("zigbee2mqtt/bridge/request/devices", "");
 }
-
-client.on('disconnect', () => {
-    console.warn('MQTT Client Offline, attempting reconnect...');
-    client.reconnect();
-});
 
 client.on('connect', async function () {
     startDeviceListListener();
 });
 
-
 client.on('error', function (err) {
     console.log(err)
 })
 
-const getDevice : (find: string) => Promise<string[]> = async (find?: string) => {
-    let _devices = globalDeviceList
-    const query = find ? find : "0x44e2f8fffe46be33"
-    let foundDevices = _devices.filter((i, idx)=> query == "all" || i.friendly_name == query || i.ieee_address == query).flatMap((item)=>item.friendly_name)
-    console.log("fd", foundDevices, foundDevices.filter((device)=>{
-	console.log(device !== "0x00124b0030d31e66" && device !== "Coordinator")
-	return (device !== "0x00124b0030d31e66" && device !== "Coordinator")
-    }))
-    return foundDevices.filter((device)=>device !== "0x00124b0030d31e66" && device !== "Coordinator")
+// Web server endpoints
+
+const app = express();
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+const wsServer = new WebSocketServer({ path : "/ws", server: app.listen(webserverPort, () => {
+    console.log(`Web server is running on http://localhost:${webserverPort}`);
+}) });
+
+wsServer.on('connection', socket => {
+    socket.on('error', err => console.error('Websocket error:', err))
+
+    socket.send(JSON.stringify({ type: 'serverHello', message: 'hello' }))
+})
+
+app.get("/", (req, res) => {
+    res.send("OK");
+});
+
+app.get("/devices", (req, res) => {
+    res.json(globalDeviceList);
+});
+//@ts-ignore
+app.get("/bar/:state", async(req : Request, res : Response) => {
+    const actions = ["on", "off", "toggle"];
+    const state = req.params.state.toLowerCase();
+    if (actions.indexOf(state) === -1) {
+        return res.status(400).json({ error: "Invalid state. Use 'on', 'off', or 'toggle'." });
+    }
+    let booleanState = state === "on" ? true : state === "off" ? false : null;
+    if (state == "toggle") {
+        const req = await fetch("http://192.168.178.40");
+        const {state: currentState} = await req.json();
+        booleanState = currentState === "ON" ? false : true;
+    }
+    try {
+        const req = await fetch(`http://192.168.178.40/state?state=${booleanState}`)
+        if (!req.ok) {
+            return res.status(500).json({ error: "Failed to toggle LED Strip" });
+        }
+        const {state} = await req.json();
+        notifyWebSocketClients({ type: "deviceStateChange", device: "ledStrip", state });
+        return res.json({ status: "success", message: `LED Strip turned ${state}`, state });
+    }
+    catch (error) {
+        console.error("Failed to fetch from LED Strip:", error);
+        return res.status(500).json({ error: "Failed to toggle LED Strip" });
+    }
+})
+//@ts-ignore
+app.get("/:deviceId/:action", async(req, res) => {
+    const actions = ["on", "off", "toggle", "setBrightness"];
+    const { deviceId, action } = req.params;
+    let brightness : number | null = null;
+    if (!globalDeviceList.some(device => device.ieee_address === deviceId)) {
+        return res.status(404).json({ error: "Device not found." });
+    }
+    if (!actions.includes(action)) {
+        return res.status(400).json({ error: `Invalid action. Use ${actions.join(", ")}.` });
+    }
+    let newState = action === "on" ? true : action === "off" ? false : null;
+    if (action === "toggle") {
+        const {state, ...s} = await getLightState(deviceId);
+        newState = state === "ON" ? false : true;
+    }
+    if (action === "setBrightness") {
+        const _brightness = req.query.value ? Math.min(Math.max(Number(req.query.value), 0), 100) : 100;
+        if (isNaN(_brightness)) {
+            return res.status(400).json({ error: "Invalid brightness value. Must be a number between 0 and 100." });
+        }
+        brightness = Math.round((_brightness / 100) * 255);
+
+    }
+    newState ? await turnOnDevice(deviceId, brightness) : await turnOffDevice(deviceId);
+    notifyWebSocketClients({ type: "deviceStateChange", deviceId, state: newState! });
+    return res.json({ status: "OK", message: `Device ${deviceId} turned ${newState ? "ON" : "OFF"}`, state: newState });
+})
+
+
+
+async function publishNoResponse(
+    publishTopic: string,
+    payload: string,
+    timeout: number = 5000
+): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const timeoutHandle = setTimeout(() => {
+            reject(new Error("Publish timed out"));
+        }, timeout);
+
+        client.publish(publishTopic, payload, (err) => {
+            clearTimeout(timeoutHandle);
+            if (err) {
+                reject(err);
+            } else {
+                resolve();
+            }
+        });
+    });
 }
 
-const server = Bun.serve({
-    port: BUN_PORT,
-    async fetch(request) {
-        const url = new URL(request.url)
-        const urlPath = url.pathname.split("/").slice(1);
-        const device = (await getDevice(urlPath[1]))
-        client.connected ? null : client.reconnect()
-	if (urlPath[0] == "bar"){
-	    let state;
-            if (urlPath[1] == "toggle"){
-                const r = await fetch(`http://192.168.178.40/toggle`)
-                if (!r.ok){
-                    return Response.json({status: "error", message: "Failed to toggle LED Strip"})
-                }
-                state = (await r.json()).state.toUpperCase() == "ON" ? true : false
-            }
-            else {
-                state = urlPath[1].toLowerCase() == "on" || false
-                const r = await fetch(`http://192.168.178.40/state?state=${state}`)
-                if (!r.ok){
-                    return Response.json({status: "error", message: "Failed to toggle LED Strip"})
-                }
-            }
-            return Response.json({status: "OK", message: `Turned LED Strip ${state ? "ON" : "OFF"}`, state})
-        }
-    if (urlPath[0] == "turn"){
-	console.log("d", device, (await getDevice(urlPath[1])));
-        if (["min", "max"].includes(urlPath[2].toLowerCase())){
-            device.forEach((d)=>{
-                client.publish(`zigbee2mqtt/${d}/set`, JSON.stringify({ "brightness": urlPath[2].toLowerCase() == "min" ? 1 : 255}))
-            })
-            return Response.json({"status" : "OK", "message" : "All devices successfully turned brightness to "+urlPath[2].toUpperCase(), devices: device})
-        }
-        if (["on", "off"].includes(urlPath[2].toLowerCase())){
-            device.forEach((d)=>{
-                client.publish(`zigbee2mqtt/${d}/set`, JSON.stringify({ "state": urlPath[2].toUpperCase()}))
-            })
-            return Response.json({"status" : "OK", "message" : "All devices successfully turned "+urlPath[2].toUpperCase(), devices: device})
-        }
-    }
-    if (urlPath[0] == "setBrightness"){
-        let brightness = ((Number(url.searchParams.get("value")) >= 0 ? Math.min(Number(url.searchParams.get("value")), 100) : 100)/100)*255
-        if (urlPath[1]){
-            if (device[0]){
-                client.publish(`zigbee2mqtt/${device[0]}/set`, JSON.stringify({ "brightness" : brightness }))
-            }
-            else {
-                return Response.json({"status" : "error", "message" : `zero devices found with name: ${urlPath[1]}`})
-            }
-        }
-        else {
-            device.map((i : string)=>client.publish(`zigbee2mqtt/${i}/set`, JSON.stringify({ "brightness" : brightness })))
-        }
-        return Response.json({brightness : brightness})
-    }
-    if (urlPath[0] == "devices"){
-        return Response.json(globalDeviceList);
-    }
-    if (urlPath[0] == "toggle"){
-        try {
-	    console.log(device)
-            const topic = `zigbee2mqtt/${device[0]}`;
-            const timeoutDuration = 30000;
-            console.log(topic, timeoutDuration)
-            const currentState = await publishAndWaitForResponse(
-                topic,
-                `${topic}/get`,
-                JSON.stringify({ state: "", brightness: "" }),
-                timeoutDuration
-            );
-            if (currentState.error) {
-                return Response.json({ error: "Request timed out" }, { status: 408 });
-            }
+function publishAndWaitForResponse(
+    listenTopic: string,
+    publishTopic: string,
+    payload: string,
+    timeout: number = 5000
+): Promise<{ error?: string; message?: any }> {
+    return new Promise((resolve, reject) => {
+        let timeoutHandle: Timer;
 
-            const { brightness, state } = currentState.message;
-            const newState = state === "ON" ? "OFF" : "ON";
-
-            // Toggle the device state
-            client.publish(`${topic}/set`, JSON.stringify({ state: newState }));
-
-            return Response.json({ state: newState, brightness });
-        } catch (error) {
-            console.error("Error toggling device:", error);
-            return Response.json({ error: "Failed to toggle device" }, { status: 500 });
-        }
-    }
-    else {
-        return new Response("Welcome to Bun!");
-    }
-}});
-
-    function publishAndWaitForResponse(
-        listenTopic: string,
-        publishTopic: string,
-        payload: string,
-        timeout: number
-    ): Promise<{ error?: string; message?: any }> {
-        return new Promise((resolve, reject) => {
-            let timeoutHandle: NodeJS.Timeout;
-
-            // Listener for the response
-            const messageHandler = (topic: string, message: Buffer) => {
-                if (topic === listenTopic) {
-                    clearTimeout(timeoutHandle);
-                    client.off("message", messageHandler);
-
-                    try {
-                        resolve({ message: JSON.parse(message.toString()) });
-                    } catch (err) {
-                        reject(new Error("Invalid JSON response"));
-                    }
-                }
-            };
-
-            // Subscribe to the topic and attach the handler
-            client.subscribe(listenTopic, (err) => {
-                if (err) {
-                    clearTimeout(timeoutHandle);
-                    reject(err);
-                }
-            });
-
-            client.on("message", messageHandler);
-
-            // Publish the request
-            client.publish(publishTopic, payload);
-
-            // Handle timeout
-            timeoutHandle = setTimeout(() => {
+        // Listener for the response
+        const messageHandler = (topic: string, message: Buffer) => {
+            if (topic === listenTopic) {
+                clearTimeout(timeoutHandle);
                 client.off("message", messageHandler);
-                client.unsubscribe(listenTopic);
-                resolve({ error: "timeout" });
-            }, timeout);
+
+                try {
+                    resolve({ message: JSON.parse(message.toString()) });
+                } catch (err) {
+                    reject(new Error("Invalid JSON response"));
+                }
+            }
+        };
+
+        // Subscribe to the topic and attach the handler
+        client.subscribe(listenTopic, (err) => {
+            if (err) {
+                clearTimeout(timeoutHandle);
+                reject(err);
+            }
         });
-    }
+
+        client.on("message", messageHandler);
+
+        // Publish the request
+        client.publish(publishTopic, payload);
+
+        // Handle timeout
+        timeoutHandle = setTimeout(() => {
+            client.off("message", messageHandler);
+            client.unsubscribe(listenTopic);
+            resolve({ error: "timeout" });
+        }, timeout);
+    });
+}

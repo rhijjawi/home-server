@@ -1,0 +1,100 @@
+/*  dark mode vs light mode background color */
+
+
+* {
+  font-family: "Raleway", sans-serif;
+  font-optical-sizing: auto;
+  font-weight: 600;
+  font-style: normal;
+}
+
+
+:root {
+  --background-color: #f0f0f0; /* Light mode background */
+  --text-color: #333; /* Light mode text color */
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background-color: #121212; /* Dark mode background */
+    --text-color: #e0e0e0; /* Dark mode text color */
+  }
+}
+#trips {
+    width: 100%;
+    height: 8rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+}
+
+.trip-container {
+    flex: 1 1 200px; /* Flexible but maintains a base size */
+    max-width: 220px;
+    background-color: var(--background-color);
+    color: var(--text-color);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    border-radius: 10px;
+    height: 100%;
+    font-family: sans-serif;
+    gap: 1rem;
+    box-sizing: border-box;
+}
+
+
+.trip-header {
+    display: flex;
+    flex-direction: column;
+    font-weight: bold;
+}
+
+.trip-vehicle {
+    display: flex;
+    font-weight: bold;
+}
+.trip-line {
+    width: fit-content;
+}
+.trip-details {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.9rem;
+    color: #333;
+    flex-wrap: wrap;
+}
+
+.lights {
+    grid-template-columns: repeat(3, 1fr);
+    display: grid;
+    gap: 1rem;
+    width: 100%;
+    height: 50vw;
+    padding: 1rem;
+    box-sizing: border-box;
+}
+.light {
+    width: 90%;
+    height: 50%;
+    margin-left: auto;
+    margin-right: auto;
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+.light[data-state="true"] {
+    background-color: #4caf50; /* Green for on state */
+}
+.light[data-state="false"] {
+    background-color: #f44336; /* Red for off state */
+}
+.light .light-name {
+    color: var(--text-color);
+    font-size: xx-large;
+    font-style : italic;
+    text-align: center;
+}
